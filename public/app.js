@@ -112,6 +112,128 @@ function enhanceSearchQuery(query) {
   return cleaned;
 }
 
+// Sync radius controls
+function updateRadiusDisplay(value) {
+  const radius = parseFloat(value).toFixed(2);
+  radiusDisplay.textContent = radius;
+  radiusSlider.value = value;
+  radiusInput.value = value;
+  currentSearchRadius = parseFloat(value);
+  console.log(`[RADIUS] Updated to ${radius} mile(s)`);
+}
+
+// Draw radius circle on map
+function drawRadiusCircle(lat, lng, radiusMiles) {
+  // Remove existing circle
+  if (radiusCircle) {
+    map.removeLayer(radiusCircle);
+  }
+  
+  // Convert miles to meters (1 mile = 1609.34 meters)
+  const radiusMeters = radiusMiles * 1609.34;
+  
+  radiusCircle = L.circle([lat, lng], {
+    color: '#337ab7',
+    fillColor: '#337ab7',
+    fillOpacity: 0.1,
+    radius: radiusMeters,
+    weight: 2,
+    dashArray: '5, 10'
+  }).addTo(map);
+  
+  console.log(`[MAP] Drew search radius circle: ${radiusMiles} mile(s)`);
+}
+
+// Calculate distance between two points in miles
+function calculateDistance(lat1, lng1, lat2, lng2) {
+  const R = 3959; // Earth's radius in miles
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng/2) * Math.sin(dLng/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+
+// Filter crimes by radius
+function filterCrimesByRadius(crimes, centerLat, centerLng, radiusMiles) {
+  return crimes.filter(crime => {
+    const distance = calculateDistance(centerLat, centerLng, crime.lat, crime.lng);
+    return distance <= radiusMiles;
+  });
+}
+
+// Export data as CSV
+function exportToCSV(crimes, place) {
+  console.log('[EXPORT] Generating CSV...');
+  
+  const headers = ['Date', 'Category', 'Street', 'Latitude', 'Longitude'];
+  const rows = [headers.join(',')];
+  
+  crimes.forEach(crime => {
+    const categoryFormatted = crime.category.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    const row = [
+      crime.date,
+      `"${categoryFormatted}"`,
+      `"${crime.street || 'No location'}"`,
+      crime.lat,
+      crime.lng
+    ];
+    rows.push(row.join(','));
+  });
+  
+  const csvContent = rows.join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  
+  link.setAttribute('href', url);
+  link.setAttribute('download', `crime-data-${place.replace(/[^a-z0-9]/gi, '-')}-${Date.now()}.csv`);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  
+  console.log(`[EXPORT] CSV downloaded: ${crimes.length} records`);
+  showStatus(`✅ Exported ${crimes.length} records to CSV`, 'success');
+}
+
+// Export data as JSON
+function exportToJSON(crimes, place, radius) {
+  console.log('[EXPORT] Generating JSON...');
+  
+  const exportData = {
+    location: place,
+    searchRadius: `${radius} mile(s)`,
+    exportDate: new Date().toISOString(),
+    totalCrimes: crimes.length,
+    crimes: crimes.map(crime => ({
+      date: crime.date,
+      category: crime.category.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+      street: crime.street || 'No location',
+      latitude: crime.lat,
+      longitude: crime.lng,
+      id: crime.id
+    }))
+  };
+  
+  const jsonContent = JSON.stringify(exportData, null, 2);
+  const blob = new Blob([jsonContent], { type: 'application/json' });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  
+  link.setAttribute('href', url);
+  link.setAttribute('download', `crime-data-${place.replace(/[^a-z0-9]/gi, '-')}-${Date.now()}.json`);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  
+  console.log(`[EXPORT] JSON downloaded: ${crimes.length} records`);
+  showStatus(`✅ Exported ${crimes.length} records to JSON`, 'success');
+}
+
 // Show status message
 function showStatus(message, type = 'info') {
   console.log(`[UI] Status: ${message} (${type})`);
@@ -160,6 +282,11 @@ function addCrimeMarkers(crimes, categoryCounts, place) {
     const categoryFormatted = crime.category.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
     const color = getCategoryColor(categoryFormatted, top5);
     
+    // Format date for display
+    const [year, month] = crime.date.split('-');
+    const dateObj = new Date(year, parseInt(month) - 1);
+    const formattedDate = dateObj.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    
     const circle = L.circle([crime.lat, crime.lng], {
       color: color,
       fillColor: color,
@@ -168,20 +295,48 @@ function addCrimeMarkers(crimes, categoryCounts, place) {
       stroke: false
     }).addTo(map);
     
-    circle.bindTooltip(categoryFormatted);
+    // Create detailed tooltip with HTML
+    const tooltipContent = `
+      <div class="crime-tooltip">
+        <strong>${categoryFormatted}</strong>
+        <div><small>📍 ${crime.street || 'Location not specified'}</small></div>
+        <div><small>📅 ${formattedDate}</small></div>
+        <div><small>🗺️ ${crime.lat.toFixed(4)}, ${crime.lng.toFixed(4)}</small></div>
+      </div>
+    `;
+    
+    circle.bindTooltip(tooltipContent, {
+      direction: 'top',
+      offset: [0, -5],
+      opacity: 0.95
+    });
+    
     crimeMarkers.push(circle);
   });
   
   // Center map on location
-  if (crimes.length > 0) {
-    const firstCrime = crimes[0];
-    map.setView([firstCrime.lat, firstCrime.lng], 14);
+  if (crimes.length > 0 && currentSearchLocation) {
+    map.setView([currentSearchLocation.lat, currentSearchLocation.lng], 14);
+    
+    // Draw radius circle
+    drawRadiusCircle(currentSearchLocation.lat, currentSearchLocation.lng, currentSearchRadius);
   }
   
   console.log('[MAP] Markers added successfully');
   
   // Create chart
   createChart(categoryCounts, place, crimes[0].date);
+  
+  // Show export section and update stats
+  exportSection.style.display = 'block';
+  updateStatsSummary(crimes.length, place);
+}
+
+// Update stats summary
+function updateStatsSummary(count, place) {
+  statsSummary.innerHTML = `
+    📊 <strong>${count}</strong> crimes found within <strong>${currentSearchRadius}</strong> mile(s) of ${place}
+  `;
 }
 
 // Create Highcharts bar chart
@@ -207,8 +362,8 @@ function createChart(categoryCounts, place, date) {
       backgroundColor: 'transparent'
     },
     title: {
-      text: `Crimes within 1 mile of ${place}`,
-      style: { fontFamily: 'Oswald, sans-serif' }
+      text: `Crimes within ${currentSearchRadius} mile(s) of ${place}`,
+      style: { fontFamily: 'Oswald, sans-serif', fontSize: '1rem' }
     },
     subtitle: {
       text: formattedDate,
@@ -363,6 +518,9 @@ async function handleFindCrime(searchQuery = null) {
     
     showStatus('📊 Fetching crime data from data.police.uk...', 'info');
     
+    // Store search location for radius filtering
+    currentSearchLocation = { lat, lng };
+    
     const crimeData = await fetchCrimeData(lat, lng);
     
     if (crimeData.total === 0) {
@@ -370,10 +528,34 @@ async function handleFindCrime(searchQuery = null) {
     }
     
     console.log('[PROCESS] Processing crime data...');
-    addCrimeMarkers(crimeData.crimes, crimeData.categoryCounts, place);
+    console.log(`[PROCESS] Total crimes from API: ${crimeData.total}`);
     
-    showStatus(`✅ Successfully loaded ${crimeData.total} crime${crimeData.total !== 1 ? 's' : ''} near ${place}`, 'success');
-    console.log(`[SUCCESS] Operation complete! Displayed ${crimeData.total} crimes\n`);
+    // Filter crimes by radius
+    const filteredCrimes = filterCrimesByRadius(crimeData.crimes, lat, lng, currentSearchRadius);
+    console.log(`[PROCESS] Crimes within ${currentSearchRadius} mile(s): ${filteredCrimes.length}`);
+    
+    if (filteredCrimes.length === 0) {
+      throw new Error(`No crimes found within ${currentSearchRadius} mile(s) of this location. Try increasing the search radius.`);
+    }
+    
+    // Recalculate category counts for filtered crimes
+    const filteredCategoryCounts = {};
+    filteredCrimes.forEach(crime => {
+      const cat = crime.category.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+      filteredCategoryCounts[cat] = (filteredCategoryCounts[cat] || 0) + 1;
+    });
+    
+    // Store for export
+    currentCrimeData = {
+      crimes: filteredCrimes,
+      place: place,
+      radius: currentSearchRadius
+    };
+    
+    addCrimeMarkers(filteredCrimes, filteredCategoryCounts, place);
+    
+    showStatus(`✅ Found ${filteredCrimes.length} crime${filteredCrimes.length !== 1 ? 's' : ''} within ${currentSearchRadius} mile(s) of ${place}`, 'success');
+    console.log(`[SUCCESS] Operation complete! Displayed ${filteredCrimes.length} crimes\n`);
     
   } catch (error) {
     console.error(`[ERROR] ${error.message}`);
@@ -388,16 +570,29 @@ async function handleFindCrime(searchQuery = null) {
 // Event listeners
 findCrimeBtn.addEventListener('click', () => handleFindCrime());
 
-// Quick search buttons
-quickSearchBtns.forEach(btn => {
-  btn.addEventListener('click', () => {
-    const location = btn.getAttribute('data-location');
-    console.log(`[UI] Quick search clicked: ${location}`);
-    addressInput.value = location;
-    useLocationCheckbox.checked = false;
-    addressInput.disabled = false;
-    handleFindCrime(location);
-  });
+// Radius slider synchronization
+radiusSlider.addEventListener('input', (e) => {
+  updateRadiusDisplay(e.target.value);
+});
+
+radiusInput.addEventListener('input', (e) => {
+  const value = parseFloat(e.target.value);
+  if (value >= 0.25 && value <= 5) {
+    updateRadiusDisplay(value);
+  }
+});
+
+// Export buttons
+exportCsvBtn.addEventListener('click', () => {
+  if (currentCrimeData) {
+    exportToCSV(currentCrimeData.crimes, currentCrimeData.place);
+  }
+});
+
+exportJsonBtn.addEventListener('click', () => {
+  if (currentCrimeData) {
+    exportToJSON(currentCrimeData.crimes, currentCrimeData.place, currentCrimeData.radius);
+  }
 });
 
 addressInput.addEventListener('keypress', (e) => {
