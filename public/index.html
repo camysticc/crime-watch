@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <!-- Meta tags -->
+  <title>Crime Watch</title>
+  <link rel="shortcut icon" href="https://www.cultureofinsight.com/img/favicon.ico" type="image/x-icon" />
+  <meta name="author" content="Paul Campbell" />
+  <meta name="keywords" content="crime, data visualization, maps, UK Police">	
+  <meta property="og:title" content="Crime Watch">
+  <meta property="og:type" content="website">
+  <meta property="description" content="Web interface to access and map UK Police data">
+  <meta property="og:description" content="Web interface to access and map UK Police data">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://cultureofinsight.com/img/crime-watch.png">
+  <meta name="og:image" content="https://cultureofinsight.com/img/crime-watch.png">
+  
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css?family=Oswald" rel="stylesheet">
+  
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+  
+  <style>
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      font-family: 'Oswald', sans-serif;
+    }
+    
+    #map {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+    
+    .top-panel {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 500;
+      text-align: right;
+      background: rgba(255, 255, 255, 0.95);
+      padding: 15px 25px;
+      border-radius: 8px;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.3);
+    }
+    
+    .top-panel h2 {
+      margin: 0;
+      font-size: 1.5rem;
+      color: #2c3e50;
+    }
+    
+    .top-panel a {
+      color: #337ab7;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    
+    .top-panel a:hover {
+      text-decoration: underline;
+    }
+    
+    .control-panel {
+      position: absolute;
+      top: 100px;
+      left: 10px;
+      z-index: 500;
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.3);
+      min-width: 320px;
+      max-width: 420px;
+    }
+    
+    .control-panel h4 {
+      margin: 0 0 15px 0;
+      color: #2c3e50;
+      font-size: 1.1rem;
+    }
+    
+    .input-group {
+      position: relative;
+      margin-bottom: 10px;
+    }
+    
+    .control-panel input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 2px solid #e0e0e0;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      transition: border-color 0.3s;
+    }
+    
+    .control-panel input:focus {
+      outline: none;
+      border-color: #337ab7;
+    }
+    
+    .control-panel input:disabled {
+      background-color: #f5f5f5;
+      color: #999;
+    }
+    
+    .control-panel button {
+      width: 100%;
+      padding: 12px;
+      font-size: 1rem;
+      font-weight: 600;
+      border-radius: 6px;
+      transition: all 0.3s;
+    }
+    
+    .btn-primary {
+      background: #337ab7;
+      border: none;
+      color: white;
+    }
+    
+    .btn-primary:hover:not(:disabled) {
+      background: #2868a0;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(51, 122, 183, 0.3);
+    }
+    
+    .btn-primary:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    
+    .radius-control {
+      margin: 15px 0;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 6px;
+    }
+    
+    .radius-control label {
+      display: block;
+      margin-bottom: 10px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #495057;
+    }
+    
+    .radius-value {
+      color: #337ab7;
+      font-size: 1.1rem;
+    }
+    
+    .radius-input-group {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    
+    .radius-input-group input[type="range"] {
+      flex: 1;
+    }
+    
+    .radius-input-group input[type="number"] {
+      width: 80px;
+      padding: 6px 8px;
+    }
+    
+    .export-section {
+      margin-top: 15px;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 6px;
+      display: none;
+    }
+    
+    .export-section h5 {
+      font-size: 0.9rem;
+      margin: 0 0 10px 0;
+      color: #495057;
+    }
+    
+    .export-buttons {
+      display: flex;
+      gap: 8px;
+    }
+    
+    .export-buttons button {
+      flex: 1;
+      padding: 8px 12px;
+      font-size: 0.85rem;
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+    
+    .stats-summary {
+      margin-top: 10px;
+      padding: 10px;
+      background: white;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      color: #666;
+    }
+    
+    .divider {
+      border-top: 1px solid #e0e0e0;
+      margin: 15px 0;
+    }
+    
+    .help-text {
+      font-size: 0.8rem;
+      color: #6c757d;
+      margin-top: 5px;
+      line-height: 1.4;
+    }
+    
+    .help-text strong {
+      color: #495057;
+    }
+    
+    #chart-container {
+      margin-top: 20px;
+      height: 400px;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 15px;
+      color: #666;
+      background: #f8f9fa;
+      border-radius: 6px;
+      margin: 10px 0;
+    }
+    
+    .loading::before {
+      content: "⏳ ";
+    }
+    
+    .error {
+      background: #f8d7da;
+      border: 1px solid #f5c6cb;
+      color: #721c24;
+      padding: 12px;
+      border-radius: 6px;
+      margin: 10px 0;
+      font-size: 0.9rem;
+    }
+    
+    .error::before {
+      content: "❌ ";
+    }
+    
+    .success {
+      background: #d4edda;
+      border: 1px solid #c3e6cb;
+      color: #155724;
+      padding: 12px;
+      border-radius: 6px;
+      margin: 10px 0;
+      font-size: 0.9rem;
+    }
+    
+    .success::before {
+      content: "✅ ";
+    }
+    
+    @media (max-width: 768px) {
+      .control-panel {
+        min-width: 280px;
+        max-width: 90%;
+      }
+      
+      .top-panel {
+        max-width: 90%;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Map -->
+  <div id="map"></div>
+  
+  <!-- Top panel -->
+  <div class="top-panel">
+    <h2>Culture of Insight's Crime Watch</h2>
+    <a href="https://cultureofinsight.com/portfolio/crimewatch/" target="_blank">About this tool</a>
+  </div>
+  
+  <!-- Control panel -->
+  <div class="control-panel">
+    <h4>🔍 Search Crime Data</h4>
+    
+    <div class="input-group">
+      <input type="text" id="address-input" class="form-control" 
+             placeholder="e.g., SW1A 1AA, Camden, Manchester, Birmingham">
+    </div>
+    
+    <div class="help-text">
+      <strong>Try:</strong> Postcodes (SW1A 1AA), areas (Camden), cities (London), or villages
+    </div>
+    
+    <div class="divider"></div>
+    
+    <div class="form-check" style="margin-bottom: 15px;">
+      <input class="form-check-input" type="checkbox" id="use-location">
+      <label class="form-check-label" for="use-location" style="font-size: 0.95rem;">
+        📍 Use my current location
+      </label>
+    </div>
+    
+    <div class="radius-control">
+      <label>📏 Search Radius: <span class="radius-value" id="radius-display">1.0</span> mile(s)</label>
+      <div class="radius-input-group">
+        <input type="range" id="radius-slider" class="form-range" 
+               min="0.25" max="5" step="0.25" value="1">
+        <input type="number" id="radius-input" class="form-control" 
+               min="0.25" max="5" step="0.25" value="1">
+      </div>
+    </div>
+    
+    <button id="find-crime-btn" class="btn btn-primary">🔎 Find Crime Data</button>
+    
+    <div class="export-section" id="export-section">
+      <h5>💾 Export Data</h5>
+      <div class="export-buttons">
+        <button id="export-csv-btn" class="btn btn-success">
+          📊 CSV
+        </button>
+        <button id="export-json-btn" class="btn btn-primary">
+          📄 JSON
+        </button>
+      </div>
+      <div class="stats-summary" id="stats-summary"></div>
+    </div>
+    
+    <div id="status-message"></div>
+    
+    <div id="chart-container"></div>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  
+  <!-- Highcharts (load before app.js) -->
+  <script src="https://code.highcharts.com/highcharts.js"></script>
+  <script src="https://code.highcharts.com/modules/exporting.js"></script>
+  
+  <!-- Main application script -->
+  <script src="app.js"></script>
+  
+  <!-- Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=UA-40168473-1"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'UA-40168473-1');
+  </script>
+
+</body>
+</html>

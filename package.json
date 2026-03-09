@@ -1,0 +1,24 @@
+{
+  "name": "crime-watch",
+  "version": "2.0.0",
+  "description": "Web interface to access and map UK Police data",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": ["crime", "uk-police", "maps", "visualization"],
+  "author": "Paul Campbell",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "node-fetch": "^2.7.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
