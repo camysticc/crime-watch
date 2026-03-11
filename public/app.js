@@ -1,661 +1,433 @@
 console.log('[CLIENT] Crime Watch application starting...');
 
-// ── Map ──────────────────────────────────────────────────────────────────────
 const map = L.map('map').setView([54.3, -3], 6);
 L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
   attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
   subdomains: 'abcd',
   maxZoom: 20
 }).addTo(map);
-console.log('[CLIENT] Map initialised');
 
-// ── State ────────────────────────────────────────────────────────────────────
-let userLocation        = null;
-let crimeMarkers        = [];
-let radiusCircle        = null;
-let currentCrimeData    = null;
+let userLocation = null;
+let crimeMarkers = [];
+let radiusCircle = null;
 let currentSearchRadius = 1;
-let currentSearchLoc    = null;
+let currentSearchCenter = null;
+let currentPlace = '';
+let allCrimesForCurrentLocation = [];
+let visibleCrimes = [];
 
-// ── Unique colour per category ───────────────────────────────────────────────
 const CATEGORY_COLORS = {
-  'Anti Social Behaviour':       '#e74c3c',
-  'Bicycle Theft':               '#e67e22',
-  'Burglary':                    '#9b59b6',
-  'Criminal Damage Arson':       '#c0392b',
-  'Drugs':                       '#27ae60',
-  'Other Crime':                 '#95a5a6',
-  'Other Theft':                 '#16a085',
-  'Possession Of Weapons':       '#8e44ad',
-  'Public Order':                '#2980b9',
-  'Robbery':                     '#d35400',
-  'Shoplifting':                 '#2ecc71',
-  'Theft From The Person':       '#1abc9c',
-  'Vehicle Crime':               '#3498db',
-  'Violence And Sexual Offences':'#922b21'
+  'Anti Social Behaviour': '#e74c3c',
+  'Bicycle Theft': '#e67e22',
+  'Burglary': '#9b59b6',
+  'Criminal Damage Arson': '#c0392b',
+  'Drugs': '#27ae60',
+  'Other Crime': '#7f8c8d',
+  'Other Theft': '#16a085',
+  'Possession Of Weapons': '#8e44ad',
+  'Public Order': '#2980b9',
+  'Robbery': '#d35400',
+  'Shoplifting': '#2ecc71',
+  'Theft From The Person': '#1abc9c',
+  'Vehicle Crime': '#3498db',
+  'Violence And Sexual Offences': '#922b21'
 };
-const FALLBACK_COLORS = [
-  '#f39c12','#7f8c8d','#6c5ce7','#fd79a8','#00b894',
-  '#0984e3','#e17055','#636e72','#fdcb6e','#a29bfe'
-];
-let fallbackIndex = 0;
-const resolvedColors = {};
+const FALLBACK_COLORS = ['#f39c12', '#6c5ce7', '#fd79a8', '#00b894', '#0984e3'];
+let fallbackColorIndex = 0;
+const resolvedCategoryColors = {};
 
-function getCategoryColor(category) {
-  if (CATEGORY_COLORS[category]) return CATEGORY_COLORS[category];
-  if (!resolvedColors[category]) {
-    resolvedColors[category] = FALLBACK_COLORS[fallbackIndex % FALLBACK_COLORS.length];
-    fallbackIndex++;
-  }
-  return resolvedColors[category];
-}
-
-// ── Format helpers ────────────────────────────────────────────────────────────
-function formatCategory(raw) {
-  return raw.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-}
-function formatMonthDate(yyyyMM) {
-  const [year, month] = yyyyMM.split('-');
-  return new Date(year, parseInt(month) - 1)
-    .toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-}
-function formatPostcode(input) {
-  const cleaned = input.trim().toUpperCase().replace(/\s+/g, '');
-  const m = cleaned.match(/^([A-Z]{1,2}\d{1,2}[A-Z]?)\s*(\d[A-Z]{2})$/);
-  return m ? `${m[1]} ${m[2]}` : input.trim();
-}
-function enhanceQuery(query) {
-  const c = query.trim();
-  if (!c) return null;
-  if (/^[A-Z]{1,2}\d/i.test(c)) return formatPostcode(c);
-  return c;
-}
-
-// ── Geolocation ───────────────────────────────────────────────────────────────
-if (navigator.geolocation) {
-  console.log('[LOCATION] Requesting geolocation...');
-  navigator.geolocation.getCurrentPosition(
-    pos => {
-      userLocation = {
-        lat: position.coords.latitude,
-        lng: position.coords.longitude
-      };
-      console.log(`[LOCATION] User location obtained: lat=${userLocation.lat}, lng=${userLocation.lng}`);
-    },
-    (error) => {
-      console.log(`[LOCATION] Failed to get user location: ${error.message}`);
-    }
-  );
-} else {
-  console.log('[LOCATION] Geolocation not supported by browser');
-}
-
-// UI Elements
 const addressInput = document.getElementById('address-input');
 const useLocationCheckbox = document.getElementById('use-location');
 const findCrimeBtn = document.getElementById('find-crime-btn');
 const statusMessage = document.getElementById('status-message');
-const chartContainer = document.getElementById('chart-container');
 const radiusSlider = document.getElementById('radius-slider');
 const radiusInput = document.getElementById('radius-input');
 const radiusDisplay = document.getElementById('radius-display');
-const exportSection = document.getElementById('export-section');
+const statsPanel = document.getElementById('stats-panel');
+const statsTotal = document.getElementById('stats-total');
+const statsSubtitle = document.getElementById('stats-subtitle');
+const statsLocationLabel = document.getElementById('stats-location-label');
+const statsBody = document.getElementById('stats-body');
+const statsDate = document.getElementById('stats-date');
 const exportCsvBtn = document.getElementById('export-csv-btn');
 const exportJsonBtn = document.getElementById('export-json-btn');
-const statsSummary = document.getElementById('stats-summary');
 
-// Format UK postcode to standard format
-function formatPostcode(postcode) {
-  // Remove extra spaces and convert to uppercase
-  const cleaned = postcode.trim().toUpperCase().replace(/\s+/g, '');
-  
-  // UK postcode patterns
-  // Format: AA9A 9AA, A9A 9AA, A9 9AA, A99 9AA, AA9 9AA, AA99 9AA
-  const postcodeRegex = /^([A-Z]{1,2}\d{1,2}[A-Z]?)\s*(\d[A-Z]{2})$/;
-  const match = cleaned.match(postcodeRegex);
-  
-  if (match) {
-    // Add space in the middle
-    return `${match[1]} ${match[2]}`;
-  }
-  
-  // Return original if doesn't match postcode pattern
-  return postcode.trim();
+function formatCategory(raw) {
+  return raw.replace(/-/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-// Validate and enhance search query
-function enhanceSearchQuery(query) {
+function formatMonthDate(yyyyMM) {
+  const [year, month] = yyyyMM.split('-');
+  return new Date(year, Number(month) - 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+}
+
+function formatPostcode(postcode) {
+  const cleaned = postcode.trim().toUpperCase().replace(/\s+/g, '');
+  const match = cleaned.match(/^([A-Z]{1,2}\d{1,2}[A-Z]?)\s*(\d[A-Z]{2})$/);
+  return match ? `${match[1]} ${match[2]}` : postcode.trim();
+}
+
+function normalizeQuery(query) {
   const cleaned = query.trim();
-  
-  if (!cleaned) {
-    return null;
-  }
-  
-  // Check if it looks like a postcode (contains numbers and letters)
-  if (/^[A-Z]{1,2}\d/.test(cleaned.toUpperCase())) {
-    const formatted = formatPostcode(cleaned);
-    console.log(`[INPUT] Detected postcode format: "${query}" -> "${formatted}"`);
-    return formatted;
-  }
-  
-  // Otherwise return as-is (for areas, cities, villages)
-  console.log(`[INPUT] Using search query: "${cleaned}"`);
+  if (!cleaned) return null;
+  if (/^[A-Z]{1,2}\d/i.test(cleaned)) return formatPostcode(cleaned);
   return cleaned;
 }
 
-// Sync radius controls
-function updateRadiusDisplay(value) {
-  const radius = parseFloat(value).toFixed(2);
-  radiusDisplay.textContent = radius;
-  radiusSlider.value = value;
-  radiusInput.value = value;
-  currentSearchRadius = parseFloat(value);
-  console.log(`[RADIUS] Updated to ${radius} mile(s)`);
+function setSearching(isSearching) {
+  findCrimeBtn.disabled = isSearching;
+  findCrimeBtn.textContent = isSearching ? '🔄 Searching...' : '🔎 Find Crime';
 }
 
-// Draw radius circle on map
-function drawRadiusCircle(lat, lng, radiusMiles) {
-  // Remove existing circle
-  if (radiusCircle) {
-    map.removeLayer(radiusCircle);
+function showStatus(message, type = 'info') {
+  statusMessage.style.display = 'block';
+  statusMessage.className = type === 'error' ? 'error' : type === 'success' ? 'success' : 'loading';
+  statusMessage.textContent = message;
+  if (type === 'success' || type === 'error') {
+    setTimeout(() => { statusMessage.style.display = 'none'; }, 4500);
   }
-  
-  // Convert miles to meters (1 mile = 1609.34 meters)
-  const radiusMeters = radiusMiles * 1609.34;
-  
-  radiusCircle = L.circle([lat, lng], {
-    color: '#337ab7',
-    fillColor: '#337ab7',
-    fillOpacity: 0.1,
-    radius: radiusMeters,
-    weight: 2,
-    dashArray: '5, 10'
-  }).addTo(map);
-  
-  console.log(`[MAP] Drew search radius circle: ${radiusMiles} mile(s)`);
 }
 
-// Calculate distance between two points in miles
-function calculateDistance(lat1, lng1, lat2, lng2) {
-  const R = 3959; // Earth's radius in miles
+function getCategoryColor(categoryName) {
+  if (CATEGORY_COLORS[categoryName]) return CATEGORY_COLORS[categoryName];
+  if (!resolvedCategoryColors[categoryName]) {
+    resolvedCategoryColors[categoryName] = FALLBACK_COLORS[fallbackColorIndex % FALLBACK_COLORS.length];
+    fallbackColorIndex += 1;
+  }
+  return resolvedCategoryColors[categoryName];
+}
+
+function updateRadiusDisplay(value) {
+  const numeric = Math.max(0.25, Math.min(5, Number(value)));
+  const rounded = Number(numeric.toFixed(2));
+  currentSearchRadius = rounded;
+  radiusDisplay.textContent = String(rounded);
+  radiusSlider.value = String(rounded);
+  radiusInput.value = String(rounded);
+}
+
+function calculateDistanceMiles(lat1, lng1, lat2, lng2) {
+  const R = 3959;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLng/2) * Math.sin(dLng/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }
 
-// Filter crimes by radius
 function filterCrimesByRadius(crimes, centerLat, centerLng, radiusMiles) {
-  return crimes.filter(crime => {
-    const distance = calculateDistance(centerLat, centerLng, crime.lat, crime.lng);
-    return distance <= radiusMiles;
+  return crimes.filter((crime) => calculateDistanceMiles(centerLat, centerLng, crime.lat, crime.lng) <= radiusMiles);
+}
+
+function buildCategoryCounts(crimes) {
+  const counts = {};
+  crimes.forEach((crime) => {
+    const category = formatCategory(crime.category);
+    counts[category] = (counts[category] || 0) + 1;
   });
+  return counts;
 }
 
-// Export data as CSV
-function exportToCSV(crimes, place) {
-  console.log('[EXPORT] Generating CSV...');
-  
-  const headers = ['Date', 'Category', 'Street', 'Latitude', 'Longitude'];
-  const rows = [headers.join(',')];
-  
-  crimes.forEach(crime => {
-    const categoryFormatted = crime.category.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-    const row = [
-      crime.date,
-      `"${categoryFormatted}"`,
-      `"${crime.street || 'No location'}"`,
-      crime.lat,
-      crime.lng
-    ];
-    rows.push(row.join(','));
-  });
-  
-  const csvContent = rows.join('\n');
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement('a');
-  const url = URL.createObjectURL(blob);
-  
-  link.setAttribute('href', url);
-  link.setAttribute('download', `crime-data-${place.replace(/[^a-z0-9]/gi, '-')}-${Date.now()}.csv`);
-  link.style.visibility = 'hidden';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  
-  console.log(`[EXPORT] CSV downloaded: ${crimes.length} records`);
-  showStatus(`✅ Exported ${crimes.length} records to CSV`, 'success');
-}
-
-// Export data as JSON
-function exportToJSON(crimes, place, radius) {
-  console.log('[EXPORT] Generating JSON...');
-  
-  const exportData = {
-    location: place,
-    searchRadius: `${radius} mile(s)`,
-    exportDate: new Date().toISOString(),
-    totalCrimes: crimes.length,
-    crimes: crimes.map(crime => ({
-      date: crime.date,
-      category: crime.category.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-      street: crime.street || 'No location',
-      latitude: crime.lat,
-      longitude: crime.lng,
-      id: crime.id
-    }))
-  };
-  
-  const jsonContent = JSON.stringify(exportData, null, 2);
-  const blob = new Blob([jsonContent], { type: 'application/json' });
-  const link = document.createElement('a');
-  const url = URL.createObjectURL(blob);
-  
-  link.setAttribute('href', url);
-  link.setAttribute('download', `crime-data-${place.replace(/[^a-z0-9]/gi, '-')}-${Date.now()}.json`);
-  link.style.visibility = 'hidden';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  
-  console.log(`[EXPORT] JSON downloaded: ${crimes.length} records`);
-  showStatus(`✅ Exported ${crimes.length} records to JSON`, 'success');
-}
-
-// Show status message
-function showStatus(message, type = 'info') {
-  console.log(`[UI] Status: ${message} (${type})`);
-  
-  statusMessage.style.display = 'block';
-  statusMessage.className = type === 'error' ? 'error' : type === 'success' ? 'success' : 'loading';
-  statusMessage.innerHTML = message;
-  
-  if (type === 'success' || type === 'error') {
-    setTimeout(() => {
-      statusMessage.style.display = 'none';
-    }, 5000);
-  }
-}
-
-// Clear markers from map
-function clearMarkers() {
-  crimeMarkers.forEach(marker => map.removeLayer(marker));
+function clearCrimeMarkers() {
+  crimeMarkers.forEach((marker) => map.removeLayer(marker));
   crimeMarkers = [];
 }
 
-// Get top 5 categories
-function getTop5Categories(categoryCounts) {
-  const sorted = Object.entries(categoryCounts).sort((a, b) => b[1] - a[1]);
-  const top5 = sorted.slice(0, 5).map(([cat]) => cat);
-  return { top5, sorted };
+function drawRadiusCircle(lat, lng, miles) {
+  if (radiusCircle) map.removeLayer(radiusCircle);
+  radiusCircle = L.circle([lat, lng], {
+    color: '#337ab7',
+    fillColor: '#337ab7',
+    fillOpacity: 0.08,
+    radius: miles * 1609.34,
+    weight: 2,
+    dashArray: '5,8'
+  }).addTo(map);
 }
 
-// Get color for category
-function getCategoryColor(category, top5) {
-  if (top5.includes(category)) {
-    return categoryColors[category] || '#1B9E77';
-  }
-  return categoryColors['hover-for-detail'];
-}
+function renderCrimeDots(crimes) {
+  clearCrimeMarkers();
+  crimes.forEach((crime) => {
+    const category = formatCategory(crime.category);
+    const color = getCategoryColor(category);
+    const recorded = formatMonthDate(crime.date);
+    const street = crime.street || 'Location not specified';
 
-// Add crime markers to map
-function addCrimeMarkers(crimes, categoryCounts, place) {
-  console.log(`[MAP] Adding ${crimes.length} crime markers...`);
-  
-  clearMarkers();
-  
-  const { top5 } = getTop5Categories(categoryCounts);
-  
-  crimes.forEach(crime => {
-    const categoryFormatted = crime.category.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-    const color = getCategoryColor(categoryFormatted, top5);
-    
-    // Format date for display
-    const [year, month] = crime.date.split('-');
-    const dateObj = new Date(year, parseInt(month) - 1);
-    const formattedDate = dateObj.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-    
-    const circle = L.circle([crime.lat, crime.lng], {
-      color: color,
+    const marker = L.circle([crime.lat, crime.lng], {
+      color,
       fillColor: color,
-      fillOpacity: 0.7,
+      fillOpacity: 0.75,
       radius: 30,
       stroke: false
     }).addTo(map);
-    
-    // Create detailed tooltip with HTML
-    const tooltipContent = `
-      <div class="crime-tooltip">
-        <strong>${categoryFormatted}</strong>
-        <div><small>📍 ${crime.street || 'Location not specified'}</small></div>
-        <div><small>📅 ${formattedDate}</small></div>
-        <div><small>🗺️ ${crime.lat.toFixed(4)}, ${crime.lng.toFixed(4)}</small></div>
+
+    const tooltipHtml = `
+      <div class="crime-tip-title">${category}</div>
+      <div class="crime-tip-row">📅 Recorded: ${recorded}</div>
+      <div class="crime-tip-row">📍 ${street}</div>
+    `;
+
+    marker.bindTooltip(tooltipHtml, {
+      className: 'crime-tip',
+      direction: 'top',
+      offset: [0, -8],
+      opacity: 0.96
+    });
+
+    crimeMarkers.push(marker);
+  });
+}
+
+function renderStatsPanel(categoryCounts, totalCrimes, place, monthText) {
+  const sorted = Object.entries(categoryCounts).sort((a, b) => b[1] - a[1]);
+  const maxCount = sorted.length > 0 ? sorted[0][1] : 1;
+
+  statsPanel.style.display = 'block';
+  statsTotal.textContent = String(totalCrimes);
+  statsSubtitle.textContent = `crimes within ${currentSearchRadius} mile(s)`;
+  statsLocationLabel.textContent = place.length > 18 ? `${place.slice(0, 18)}...` : place;
+  statsDate.textContent = monthText;
+
+  statsBody.innerHTML = '';
+  if (sorted.length === 0) {
+    statsBody.innerHTML = '<div class="help-text">No categories available for this result.</div>';
+    return;
+  }
+
+  sorted.forEach(([category, count]) => {
+    const widthPct = Math.max(6, Math.round((count / maxCount) * 100));
+    const color = getCategoryColor(category);
+    const row = document.createElement('div');
+    row.innerHTML = `
+      <div class="category-row">
+        <span class="category-swatch" style="background:${color}"></span>
+        <span class="category-name">${category}</span>
+        <span class="category-count">${count}</span>
+      </div>
+      <div class="category-bar-track">
+        <div class="category-bar-fill" style="width:${widthPct}%;background:${color}"></div>
       </div>
     `;
-    
-    circle.bindTooltip(tooltipContent, {
-      direction: 'top',
-      offset: [0, -5],
-      opacity: 0.95
-    });
-    
-    crimeMarkers.push(circle);
+    statsBody.appendChild(row);
   });
-  
-  // Center map on location
-  if (crimes.length > 0 && currentSearchLocation) {
-    map.setView([currentSearchLocation.lat, currentSearchLocation.lng], 14);
-    
-    // Draw radius circle
-    drawRadiusCircle(currentSearchLocation.lat, currentSearchLocation.lng, currentSearchRadius);
+}
+
+function renderCurrentResult() {
+  if (!currentSearchCenter || allCrimesForCurrentLocation.length === 0) return;
+
+  const filtered = filterCrimesByRadius(
+    allCrimesForCurrentLocation,
+    currentSearchCenter.lat,
+    currentSearchCenter.lng,
+    currentSearchRadius
+  );
+  visibleCrimes = filtered;
+
+  drawRadiusCircle(currentSearchCenter.lat, currentSearchCenter.lng, currentSearchRadius);
+  map.setView([currentSearchCenter.lat, currentSearchCenter.lng], 14);
+
+  if (filtered.length === 0) {
+    clearCrimeMarkers();
+    renderStatsPanel({}, 0, currentPlace, 'No crimes in selected radius');
+    showStatus('No crimes found in this radius. Increase the radius to see results.', 'error');
+    return;
   }
-  
-  console.log('[MAP] Markers added successfully');
-  
-  // Create chart
-  createChart(categoryCounts, place, crimes[0].date);
-  
-  // Show export section and update stats
-  exportSection.style.display = 'block';
-  updateStatsSummary(crimes.length, place);
+
+  const categoryCounts = buildCategoryCounts(filtered);
+  const monthText = formatMonthDate(filtered[0].date);
+  renderCrimeDots(filtered);
+  renderStatsPanel(categoryCounts, filtered.length, currentPlace, monthText);
+  showStatus(`Found ${filtered.length} crimes in ${currentSearchRadius} mile(s).`, 'success');
 }
 
-// Update stats summary
-function updateStatsSummary(count, place) {
-  statsSummary.innerHTML = `
-    📊 <strong>${count}</strong> crimes found within <strong>${currentSearchRadius}</strong> mile(s) of ${place}
-  `;
-}
-
-// Create Highcharts bar chart
-function createChart(categoryCounts, place, date) {
-  console.log('[CHART] Creating statistics chart...');
-  
-  const { sorted } = getTop5Categories(categoryCounts);
-  const categories = sorted.map(([cat]) => cat);
-  const data = sorted.map(([, count]) => count);
-  
-  // Format date
-  const [year, month] = date.split('-');
-  const dateObj = new Date(year, parseInt(month) - 1);
-  const formattedDate = dateObj.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  
-  if (currentChart) {
-    currentChart.destroy();
-  }
-  
-  currentChart = Highcharts.chart('chart-container', {
-    chart: {
-      type: 'bar',
-      backgroundColor: 'transparent'
-    },
-    title: {
-      text: `Crimes within ${currentSearchRadius} mile(s) of ${place}`,
-      style: { fontFamily: 'Oswald, sans-serif', fontSize: '1rem' }
-    },
-    subtitle: {
-      text: formattedDate,
-      style: { fontFamily: 'Oswald, sans-serif' }
-    },
-    xAxis: {
-      categories: categories,
-      title: { text: '' },
-      gridLineWidth: 0
-    },
-    yAxis: {
-      title: { text: 'Incidents' },
-      gridLineWidth: 0
-    },
-    legend: {
-      enabled: false
-    },
-    tooltip: {
-      pointFormat: 'Incidents: <b>{point.y}</b>'
-    },
-    plotOptions: {
-      series: {
-        cursor: 'default',
-        color: '#4682B4'
-      }
-    },
-    series: [{
-      name: 'Incidents',
-      data: data
-    }],
-    credits: {
-      enabled: false
-    }
-  });
-  
-  console.log('[CHART] Chart created successfully');
-}
-
-// Fetch crime data
 async function fetchCrimeData(lat, lng) {
-  console.log(`[FETCH] Fetching crime data for lat=${lat}, lng=${lng}...`);
-  
-  try {
-    const response = await fetch(`/api/crime?lat=${lat}&lng=${lng}`);
-    
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-    
-    const data = await response.json();
-    console.log(`[FETCH] Retrieved ${data.total} crimes`);
-    
-    return data;
-    
-  } catch (error) {
-    console.error(`[FETCH] Error: ${error.message}`);
-    throw error;
-  }
+  const response = await fetch(`/api/crime?lat=${lat}&lng=${lng}`);
+  if (!response.ok) throw new Error(`Could not fetch crime data (${response.status})`);
+  return response.json();
 }
 
-// Geocode address
 async function geocodeAddress(address) {
-  const enhanced = enhanceSearchQuery(address);
-  
-  if (!enhanced) {
-    throw new Error('Please enter a valid location');
+  const normalized = normalizeQuery(address);
+  if (!normalized) throw new Error('Enter a postcode, borough, village, or area first.');
+  const response = await fetch(`/api/geocode?address=${encodeURIComponent(normalized)}`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error || 'Could not find that location.');
   }
-  
-  console.log(`[GEOCODE] Geocoding: "${enhanced}"`);
-  
-  try {
-    const response = await fetch(`/api/geocode?address=${encodeURIComponent(enhanced)}`);
-    
-    if (!response.ok) {
-      if (response.status === 501) {
-        throw new Error('Address search requires an OpenCage API key. Please use GPS location or try another method.');
-      }
-      if (response.status === 404) {
-        throw new Error(`Location "${enhanced}" not found. Try a different postcode, area, or city.`);
-      }
-      throw new Error(`Failed to find location`);
-    }
-    
-    const data = await response.json();
-    console.log(`[GEOCODE] Location resolved: ${data.formatted} (lat=${data.lat}, lng=${data.lng})`);
-    
-    return data;
-    
-  } catch (error) {
-    console.error(`[GEOCODE] Error: ${error.message}`);
-    throw error;
-  }
+  return response.json();
 }
 
-// Reverse geocode coordinates
 async function reverseGeocode(lat, lng) {
-  console.log(`[GEOCODE] Reverse geocoding: lat=${lat}, lng=${lng}`);
-  
-  try {
-    const response = await fetch(`/api/reverse-geocode?lat=${lat}&lng=${lng}`);
-    const data = await response.json();
-    
-    console.log(`[GEOCODE] Location: ${data.formatted}`);
-    return data.formatted;
-    
-  } catch (error) {
-    console.error(`[GEOCODE] Error: ${error.message}`);
-    return `Location (${lat}, ${lng})`;
-  }
+  const response = await fetch(`/api/reverse-geocode?lat=${lat}&lng=${lng}`);
+  if (!response.ok) return `Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+  const data = await response.json();
+  return data.formatted || `Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
 }
 
-// Main search handler
-async function handleFindCrime(searchQuery = null) {
-  console.log('\n[EVENT] Find Crime button clicked');
-  
-  // Disable button during search
-  findCrimeBtn.disabled = true;
-  findCrimeBtn.textContent = '🔄 Searching...';
-  
-  let lat, lng, place;
-  
+async function handleSearch() {
+  setSearching(true);
   try {
+    let lat;
+    let lng;
+    let place;
+
     if (useLocationCheckbox.checked) {
-      console.log('[EVENT] Using current location');
-      
-      if (!userLocation) {
-        throw new Error('Unable to get your location. Please enable location services or use address search.');
-      }
-      
+      if (!userLocation) throw new Error('Location not available. Enable browser location and try again.');
       lat = userLocation.lat;
       lng = userLocation.lng;
-      
-      showStatus('🔍 Getting your location...', 'info');
       place = await reverseGeocode(lat, lng);
-      
     } else {
-      console.log('[EVENT] Using address search');
-      
-      const address = searchQuery || addressInput.value.trim();
-      
-      if (!address || address.length < 2) {
-        throw new Error('Please enter a postcode, area, city, or location (e.g., "SW1A 1AA", "Camden", "Manchester")');
+      const query = addressInput.value;
+      if (!query || query.trim().length < 2) {
+        throw new Error('Enter a postcode, borough, village, or area name.');
       }
-      
-      showStatus('📍 Looking up location...', 'info');
-      const geocodeResult = await geocodeAddress(address);
-      
-      lat = geocodeResult.lat;
-      lng = geocodeResult.lng;
-      place = geocodeResult.formatted || address;
+      showStatus('Looking up location...', 'info');
+      const geocoded = await geocodeAddress(query);
+      lat = geocoded.lat;
+      lng = geocoded.lng;
+      place = geocoded.formatted || query.trim();
     }
-    
-    showStatus('📊 Fetching crime data from data.police.uk...', 'info');
-    
-    // Store search location for radius filtering
-    currentSearchLocation = { lat, lng };
-    
-    const crimeData = await fetchCrimeData(lat, lng);
-    
-    if (crimeData.total === 0) {
-      throw new Error('No crime data found for this location. The area may be outside England, Wales, or Northern Ireland, or no crimes were reported recently.');
+
+    showStatus('Fetching crime data...', 'info');
+    const apiData = await fetchCrimeData(lat, lng);
+    if (!apiData.crimes || apiData.crimes.length === 0) {
+      throw new Error('No crime data returned for this location.');
     }
-    
-    console.log('[PROCESS] Processing crime data...');
-    console.log(`[PROCESS] Total crimes from API: ${crimeData.total}`);
-    
-    // Filter crimes by radius
-    const filteredCrimes = filterCrimesByRadius(crimeData.crimes, lat, lng, currentSearchRadius);
-    console.log(`[PROCESS] Crimes within ${currentSearchRadius} mile(s): ${filteredCrimes.length}`);
-    
-    if (filteredCrimes.length === 0) {
-      throw new Error(`No crimes found within ${currentSearchRadius} mile(s) of this location. Try increasing the search radius.`);
-    }
-    
-    // Recalculate category counts for filtered crimes
-    const filteredCategoryCounts = {};
-    filteredCrimes.forEach(crime => {
-      const cat = crime.category.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-      filteredCategoryCounts[cat] = (filteredCategoryCounts[cat] || 0) + 1;
-    });
-    
-    // Store for export
-    currentCrimeData = {
-      crimes: filteredCrimes,
-      place: place,
-      radius: currentSearchRadius
-    };
-    
-    addCrimeMarkers(filteredCrimes, filteredCategoryCounts, place);
-    
-    showStatus(`✅ Found ${filteredCrimes.length} crime${filteredCrimes.length !== 1 ? 's' : ''} within ${currentSearchRadius} mile(s) of ${place}`, 'success');
-    console.log(`[SUCCESS] Operation complete! Displayed ${filteredCrimes.length} crimes\n`);
-    
+
+    currentSearchCenter = { lat, lng };
+    currentPlace = place;
+    allCrimesForCurrentLocation = apiData.crimes;
+    renderCurrentResult();
   } catch (error) {
-    console.error(`[ERROR] ${error.message}`);
     showStatus(error.message, 'error');
   } finally {
-    // Re-enable button
-    findCrimeBtn.disabled = false;
-    findCrimeBtn.textContent = '🔎 Find Crime Data';
+    setSearching(false);
   }
 }
 
-// Event listeners
-findCrimeBtn.addEventListener('click', () => handleFindCrime());
+function exportToCSV(crimes, place) {
+  const headers = ['Month', 'Category', 'Street', 'Latitude', 'Longitude'];
+  const rows = [headers.join(',')];
+  crimes.forEach((crime) => {
+    rows.push([
+      crime.date,
+      `"${formatCategory(crime.category)}"`,
+      `"${(crime.street || 'Location not specified').replace(/"/g, '""')}"`,
+      crime.lat,
+      crime.lng
+    ].join(','));
+  });
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `crime-data-${place.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${Date.now()}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
-// Radius slider synchronization
-radiusSlider.addEventListener('input', (e) => {
-  updateRadiusDisplay(e.target.value);
+function exportToJSON(crimes, place) {
+  const payload = {
+    place,
+    radiusMiles: currentSearchRadius,
+    exportedAt: new Date().toISOString(),
+    total: crimes.length,
+    crimes: crimes.map((crime) => ({
+      month: crime.date,
+      category: formatCategory(crime.category),
+      street: crime.street || 'Location not specified',
+      lat: crime.lat,
+      lng: crime.lng
+    }))
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `crime-data-${place.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${Date.now()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+if (navigator.geolocation) {
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      userLocation = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude
+      };
+      console.log(`[LOCATION] Ready: ${userLocation.lat}, ${userLocation.lng}`);
+    },
+    (error) => {
+      console.log(`[LOCATION] Not available: ${error.message}`);
+    }
+  );
+}
+
+findCrimeBtn.addEventListener('click', handleSearch);
+addressInput.addEventListener('keypress', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    handleSearch();
+  }
 });
 
-radiusInput.addEventListener('input', (e) => {
-  const value = parseFloat(e.target.value);
-  if (value >= 0.25 && value <= 5) {
+addressInput.addEventListener('input', (event) => {
+  const value = event.target.value;
+  if (value.length >= 5 && /^[A-Z]{1,2}\d/i.test(value.trim())) {
+    const formatted = formatPostcode(value);
+    if (formatted.includes(' ') && formatted !== value) {
+      event.target.value = formatted;
+    }
+  }
+});
+
+useLocationCheckbox.addEventListener('change', (event) => {
+  if (event.target.checked) {
+    addressInput.disabled = true;
+    addressInput.placeholder = 'Using your current location...';
+  } else {
+    addressInput.disabled = false;
+    addressInput.placeholder = 'e.g., SW1A 1AA, Camden, Manchester';
+  }
+});
+
+radiusSlider.addEventListener('input', (event) => {
+  updateRadiusDisplay(event.target.value);
+  if (allCrimesForCurrentLocation.length > 0) renderCurrentResult();
+});
+
+radiusInput.addEventListener('input', (event) => {
+  const value = Number(event.target.value);
+  if (!Number.isNaN(value) && value >= 0.25 && value <= 5) {
     updateRadiusDisplay(value);
+    if (allCrimesForCurrentLocation.length > 0) renderCurrentResult();
   }
 });
 
-// Export buttons
 exportCsvBtn.addEventListener('click', () => {
-  if (currentCrimeData) {
-    exportToCSV(currentCrimeData.crimes, currentCrimeData.place);
+  if (visibleCrimes.length === 0) {
+    showStatus('No visible crimes to export.', 'error');
+    return;
   }
+  exportToCSV(visibleCrimes, currentPlace || 'search');
+  showStatus(`Exported ${visibleCrimes.length} crimes to CSV.`, 'success');
 });
 
 exportJsonBtn.addEventListener('click', () => {
-  if (currentCrimeData) {
-    exportToJSON(currentCrimeData.crimes, currentCrimeData.place, currentCrimeData.radius);
+  if (visibleCrimes.length === 0) {
+    showStatus('No visible crimes to export.', 'error');
+    return;
   }
+  exportToJSON(visibleCrimes, currentPlace || 'search');
+  showStatus(`Exported ${visibleCrimes.length} crimes to JSON.`, 'success');
 });
 
-addressInput.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    handleFindCrime();
-  }
-});
-
-// Auto-format postcode as user types
-addressInput.addEventListener('input', (e) => {
-  const value = e.target.value;
-  // Only auto-format if it looks like a postcode
-  if (value.length >= 5 && /^[A-Z]{1,2}\d/i.test(value)) {
-    const formatted = formatPostcode(value);
-    if (formatted !== value && formatted.includes(' ')) {
-      e.target.value = formatted;
-    }
-  }
-});
-
-useLocationCheckbox.addEventListener('change', (e) => {
-  if (e.target.checked) {
-    addressInput.disabled = true;
-    addressInput.placeholder = '📍 Using your current GPS location...';
-    if (!userLocation) {
-      showStatus('Requesting location access...', 'info');
-    }
-  } else {
-    addressInput.disabled = false;
-    addressInput.placeholder = 'e.g., SW1A 1AA, Camden, Manchester, or Birmingham';
-  }
-});
-
-console.log('[CLIENT] Application ready. Click "Find Crime!" to begin.');
+updateRadiusDisplay(1);
+console.log('[CLIENT] Ready');
