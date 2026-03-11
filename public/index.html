@@ -46,246 +46,295 @@
       height: 100%;
       z-index: 1;
     }
-    
+
+    /* ── Top title bar ── */
     .top-panel {
       position: absolute;
       top: 10px;
-      right: 10px;
+      left: 50%;
+      transform: translateX(-50%);
       z-index: 500;
-      text-align: right;
-      background: rgba(255, 255, 255, 0.95);
-      padding: 15px 25px;
+      text-align: center;
+      background: rgba(255,255,255,0.97);
+      padding: 10px 28px;
       border-radius: 8px;
-      box-shadow: 0 3px 10px rgba(0,0,0,0.3);
+      box-shadow: 0 3px 10px rgba(0,0,0,0.25);
+      white-space: nowrap;
     }
-    
     .top-panel h2 {
       margin: 0;
-      font-size: 1.5rem;
+      font-size: 1.35rem;
       color: #2c3e50;
     }
-    
     .top-panel a {
       color: #337ab7;
       text-decoration: none;
-      font-size: 0.9rem;
+      font-size: 0.82rem;
     }
-    
-    .top-panel a:hover {
-      text-decoration: underline;
-    }
-    
+    .top-panel a:hover { text-decoration: underline; }
+
+    /* ── Left search panel ── */
     .control-panel {
       position: absolute;
-      top: 100px;
+      top: 80px;
       left: 10px;
       z-index: 500;
       background: white;
-      padding: 20px;
+      padding: 18px;
       border-radius: 8px;
-      box-shadow: 0 3px 10px rgba(0,0,0,0.3);
-      min-width: 320px;
-      max-width: 420px;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.25);
+      width: 300px;
     }
-    
     .control-panel h4 {
-      margin: 0 0 15px 0;
+      margin: 0 0 12px 0;
       color: #2c3e50;
-      font-size: 1.1rem;
+      font-size: 1rem;
     }
-    
     .input-group {
       position: relative;
       margin-bottom: 10px;
     }
-    
-    .control-panel input {
-      width: 100%;
+
+    /* ── Right statistics panel ── */
+    .stats-panel {
+      position: absolute;
+      top: 80px;
+      right: 10px;
+      z-index: 500;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.25);
+      width: 280px;
+      display: none;
+      overflow: hidden;
+    }
+    .stats-panel-header {
+      background: #2c3e50;
+      color: white;
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .stats-panel-header h5 {
+      margin: 0;
+      font-size: 0.95rem;
+      letter-spacing: 0.5px;
+    }
+    .stats-total {
+      font-size: 1.4rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .stats-subtitle {
+      font-size: 0.75rem;
+      opacity: 0.8;
+      margin-top: 2px;
+    }
+    .stats-body {
+      padding: 12px;
+      max-height: calc(100vh - 200px);
+      overflow-y: auto;
+    }
+    .category-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 9px;
+    }
+    .category-swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .category-name {
+      flex: 1;
+      font-size: 0.78rem;
+      color: #333;
+      line-height: 1.2;
+    }
+    .category-count {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #2c3e50;
+      min-width: 28px;
+      text-align: right;
+    }
+    .category-bar-track {
+      position: relative;
+      height: 5px;
+      background: #eee;
+      border-radius: 3px;
+      margin-top: 2px;
+    }
+    .category-bar-fill {
+      position: absolute;
+      left: 0;
+      top: 0;
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.4s ease;
+    }
+    .stats-date {
+      font-size: 0.72rem;
+      color: #888;
+      padding: 0 12px 10px;
+      text-align: center;
+    }
+    .stats-divider {
+      border: none;
+      border-top: 1px solid #eee;
+      margin: 8px 0;
+    }
+    .export-row {
+      display: flex;
+      gap: 6px;
       padding: 10px 12px;
+      border-top: 1px solid #eee;
+    }
+    .export-row button {
+      flex: 1;
+      padding: 6px 0;
+      font-size: 0.78rem;
+      font-family: 'Oswald', sans-serif;
+      border-radius: 4px;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      transition: opacity 0.2s;
+    }
+    .export-row button:hover { opacity: 0.85; }
+    .btn-export-csv  { background: #27ae60; color: white; }
+    .btn-export-json { background: #2980b9; color: white; }
+    
+    /* ── Left panel inputs / buttons ── */
+    .control-panel input[type="text"],
+    .control-panel input[type="number"] {
+      width: 100%;
+      padding: 9px 12px;
       border: 2px solid #e0e0e0;
       border-radius: 6px;
-      font-size: 0.95rem;
-      transition: border-color 0.3s;
+      font-size: 0.9rem;
+      font-family: 'Oswald', sans-serif;
+      transition: border-color 0.2s;
+      box-sizing: border-box;
     }
-    
     .control-panel input:focus {
       outline: none;
       border-color: #337ab7;
     }
-    
     .control-panel input:disabled {
-      background-color: #f5f5f5;
+      background: #f5f5f5;
       color: #999;
     }
-    
-    .control-panel button {
-      width: 100%;
-      padding: 12px;
-      font-size: 1rem;
-      font-weight: 600;
-      border-radius: 6px;
-      transition: all 0.3s;
-    }
-    
     .btn-primary {
-      background: #337ab7;
+      width: 100%;
+      padding: 11px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      font-family: 'Oswald', sans-serif;
+      border-radius: 6px;
       border: none;
+      background: #337ab7;
       color: white;
+      cursor: pointer;
+      transition: all 0.2s;
+      letter-spacing: 0.4px;
     }
-    
     .btn-primary:hover:not(:disabled) {
       background: #2868a0;
       transform: translateY(-1px);
-      box-shadow: 0 4px 8px rgba(51, 122, 183, 0.3);
+      box-shadow: 0 4px 8px rgba(51,122,183,0.3);
     }
-    
-    .btn-primary:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-    
+    .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
     .radius-control {
-      margin: 15px 0;
-      padding: 15px;
+      margin: 12px 0;
+      padding: 12px;
       background: #f8f9fa;
       border-radius: 6px;
     }
-    
     .radius-control label {
       display: block;
-      margin-bottom: 10px;
-      font-size: 0.9rem;
+      margin-bottom: 8px;
+      font-size: 0.85rem;
       font-weight: 600;
       color: #495057;
     }
-    
-    .radius-value {
-      color: #337ab7;
-      font-size: 1.1rem;
-    }
-    
+    .radius-value { color: #337ab7; font-size: 1rem; }
     .radius-input-group {
       display: flex;
-      gap: 10px;
+      gap: 8px;
       align-items: center;
     }
-    
-    .radius-input-group input[type="range"] {
-      flex: 1;
-    }
-    
-    .radius-input-group input[type="number"] {
-      width: 80px;
-      padding: 6px 8px;
-    }
-    
-    .export-section {
-      margin-top: 15px;
-      padding: 15px;
-      background: #f8f9fa;
-      border-radius: 6px;
-      display: none;
-    }
-    
-    .export-section h5 {
-      font-size: 0.9rem;
-      margin: 0 0 10px 0;
-      color: #495057;
-    }
-    
-    .export-buttons {
-      display: flex;
-      gap: 8px;
-    }
-    
-    .export-buttons button {
-      flex: 1;
-      padding: 8px 12px;
-      font-size: 0.85rem;
-      border-radius: 4px;
-      transition: all 0.2s;
-    }
-    
-    .stats-summary {
-      margin-top: 10px;
-      padding: 10px;
-      background: white;
-      border-radius: 4px;
-      font-size: 0.85rem;
-      color: #666;
-    }
-    
-    .divider {
-      border-top: 1px solid #e0e0e0;
-      margin: 15px 0;
-    }
-    
+    .radius-input-group input[type="range"] { flex: 1; }
+    .radius-input-group input[type="number"] { width: 72px !important; padding: 5px 7px !important; }
+
+    .divider { border-top: 1px solid #e0e0e0; margin: 12px 0; }
     .help-text {
-      font-size: 0.8rem;
+      font-size: 0.77rem;
       color: #6c757d;
       margin-top: 5px;
       line-height: 1.4;
     }
-    
-    .help-text strong {
-      color: #495057;
-    }
-    
-    #chart-container {
-      margin-top: 20px;
-      height: 400px;
-    }
-    
+    .help-text strong { color: #495057; }
+
+    /* Status messages */
     .loading {
       text-align: center;
-      padding: 15px;
+      padding: 12px;
       color: #666;
       background: #f8f9fa;
       border-radius: 6px;
       margin: 10px 0;
+      font-size: 0.85rem;
     }
-    
-    .loading::before {
-      content: "⏳ ";
-    }
-    
     .error {
       background: #f8d7da;
       border: 1px solid #f5c6cb;
       color: #721c24;
-      padding: 12px;
+      padding: 10px 12px;
       border-radius: 6px;
       margin: 10px 0;
-      font-size: 0.9rem;
+      font-size: 0.82rem;
     }
-    
-    .error::before {
-      content: "❌ ";
-    }
-    
     .success {
       background: #d4edda;
       border: 1px solid #c3e6cb;
       color: #155724;
-      padding: 12px;
+      padding: 10px 12px;
       border-radius: 6px;
       margin: 10px 0;
-      font-size: 0.9rem;
+      font-size: 0.82rem;
     }
-    
-    .success::before {
-      content: "✅ ";
+
+    /* Leaflet tooltip override */
+    .leaflet-tooltip.crime-tip {
+      padding: 8px 11px;
+      border-radius: 6px;
+      border: none;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      font-family: 'Oswald', sans-serif;
+      font-size: 0.85rem;
+      line-height: 1.5;
+      max-width: 220px;
+      pointer-events: none;
     }
-    
-    @media (max-width: 768px) {
-      .control-panel {
-        min-width: 280px;
-        max-width: 90%;
-      }
-      
-      .top-panel {
-        max-width: 90%;
-      }
+    .crime-tip-title {
+      font-weight: 700;
+      font-size: 0.92rem;
+      margin-bottom: 3px;
+    }
+    .crime-tip-row {
+      font-size: 0.78rem;
+      color: #555;
+    }
+
+    @media (max-width: 900px) {
+      .stats-panel { display: none !important; }
+      .control-panel { width: 280px; }
     }
   </style>
 </head>
@@ -294,62 +343,57 @@
   <!-- Map -->
   <div id="map"></div>
   
-  <!-- Top panel -->
+  <!-- Top title -->
   <div class="top-panel">
     <h2>Culture of Insight's Crime Watch</h2>
     <a href="https://cultureofinsight.com/portfolio/crimewatch/" target="_blank">About this tool</a>
   </div>
   
-  <!-- Control panel -->
+  <!-- Left search panel -->
   <div class="control-panel">
     <h4>🔍 Search Crime Data</h4>
     
-    <div class="input-group">
-      <input type="text" id="address-input" class="form-control" 
-             placeholder="e.g., SW1A 1AA, Camden, Manchester, Birmingham">
+    <input type="text" id="address-input"
+           placeholder="e.g., SW1A 1AA, Camden, Manchester">
+    <div class="help-text" style="margin-bottom:10px">
+      <strong>Try:</strong> postcodes, boroughs, villages, cities
     </div>
-    
-    <div class="help-text">
-      <strong>Try:</strong> Postcodes (SW1A 1AA), areas (Camden), cities (London), or villages
-    </div>
-    
+
     <div class="divider"></div>
-    
-    <div class="form-check" style="margin-bottom: 15px;">
-      <input class="form-check-input" type="checkbox" id="use-location">
-      <label class="form-check-label" for="use-location" style="font-size: 0.95rem;">
-        📍 Use my current location
-      </label>
+
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:0.88rem;">
+      <input type="checkbox" id="use-location" style="width:auto;">
+      <label for="use-location" style="margin:0;cursor:pointer;">📍 Use my current location</label>
     </div>
     
     <div class="radius-control">
-      <label>📏 Search Radius: <span class="radius-value" id="radius-display">1.0</span> mile(s)</label>
+      <label>📏 Radius: <span class="radius-value" id="radius-display">1.0</span> mile(s)</label>
       <div class="radius-input-group">
-        <input type="range" id="radius-slider" class="form-range" 
-               min="0.25" max="5" step="0.25" value="1">
-        <input type="number" id="radius-input" class="form-control" 
-               min="0.25" max="5" step="0.25" value="1">
+        <input type="range" id="radius-slider" min="0.25" max="5" step="0.25" value="1">
+        <input type="number" id="radius-input" min="0.25" max="5" step="0.25" value="1">
       </div>
     </div>
     
-    <button id="find-crime-btn" class="btn btn-primary">🔎 Find Crime Data</button>
-    
-    <div class="export-section" id="export-section">
-      <h5>💾 Export Data</h5>
-      <div class="export-buttons">
-        <button id="export-csv-btn" class="btn btn-success">
-          📊 CSV
-        </button>
-        <button id="export-json-btn" class="btn btn-primary">
-          📄 JSON
-        </button>
-      </div>
-      <div class="stats-summary" id="stats-summary"></div>
-    </div>
+    <button id="find-crime-btn" class="btn btn-primary">🔎 Find Crime</button>
     
     <div id="status-message"></div>
-    
-    <div id="chart-container"></div>
+  </div>
+
+  <!-- Right statistics panel -->
+  <div class="stats-panel" id="stats-panel">
+    <div class="stats-panel-header">
+      <div>
+        <div class="stats-total" id="stats-total">0</div>
+        <div class="stats-subtitle" id="stats-subtitle">crimes recorded</div>
+      </div>
+      <h5 id="stats-location-label">Results</h5>
+    </div>
+    <div class="stats-body" id="stats-body"></div>
+    <div class="stats-date" id="stats-date"></div>
+    <div class="export-row">
+      <button class="btn-export-csv"  id="export-csv-btn">⬇ CSV</button>
+      <button class="btn-export-json" id="export-json-btn">⬇ JSON</button>
+    </div>
   </div>
 
   <!-- Leaflet JS -->

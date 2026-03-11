@@ -1,50 +1,81 @@
 console.log('[CLIENT] Crime Watch application starting...');
 
-// Initialize map
+// ── Map ──────────────────────────────────────────────────────────────────────
 const map = L.map('map').setView([54.3, -3], 6);
-
 L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
   subdomains: 'abcd',
   maxZoom: 20
 }).addTo(map);
+console.log('[CLIENT] Map initialised');
 
-console.log('[CLIENT] Map initialized');
-
-// Global variables
-let userLocation = null;
-let crimeMarkers = [];
-let currentChart = null;
-let radiusCircle = null;
-let currentCrimeData = null;
+// ── State ────────────────────────────────────────────────────────────────────
+let userLocation        = null;
+let crimeMarkers        = [];
+let radiusCircle        = null;
+let currentCrimeData    = null;
 let currentSearchRadius = 1;
-let currentSearchLocation = null;
+let currentSearchLoc    = null;
 
-// Color palette for crime categories (matching original)
-const categoryColors = {
-  'Anti Social Behaviour': '#1B9E77',
-  'Bicycle Theft': '#D95F02',
-  'Burglary': '#7570B3',
-  'Criminal Damage Arson': '#E7298A',
-  'Drugs': '#66A61E',
-  'Other Crime': '#E6AB02',
-  'Other Theft': '#1B9E77',
-  'Possession Of Weapons': '#D95F02',
-  'Public Order': '#7570B3',
-  'Robbery': '#E7298A',
-  'Shoplifting': '#66A61E',
-  'Theft From The Person': '#E6AB02',
-  'Vehicle Crime': '#1B9E77',
-  'Violence And Sexual Offences': '#D95F02',
-  'hover-for-detail': '#999999'
+// ── Unique colour per category ───────────────────────────────────────────────
+const CATEGORY_COLORS = {
+  'Anti Social Behaviour':       '#e74c3c',
+  'Bicycle Theft':               '#e67e22',
+  'Burglary':                    '#9b59b6',
+  'Criminal Damage Arson':       '#c0392b',
+  'Drugs':                       '#27ae60',
+  'Other Crime':                 '#95a5a6',
+  'Other Theft':                 '#16a085',
+  'Possession Of Weapons':       '#8e44ad',
+  'Public Order':                '#2980b9',
+  'Robbery':                     '#d35400',
+  'Shoplifting':                 '#2ecc71',
+  'Theft From The Person':       '#1abc9c',
+  'Vehicle Crime':               '#3498db',
+  'Violence And Sexual Offences':'#922b21'
 };
+const FALLBACK_COLORS = [
+  '#f39c12','#7f8c8d','#6c5ce7','#fd79a8','#00b894',
+  '#0984e3','#e17055','#636e72','#fdcb6e','#a29bfe'
+];
+let fallbackIndex = 0;
+const resolvedColors = {};
 
-// Get user's location
+function getCategoryColor(category) {
+  if (CATEGORY_COLORS[category]) return CATEGORY_COLORS[category];
+  if (!resolvedColors[category]) {
+    resolvedColors[category] = FALLBACK_COLORS[fallbackIndex % FALLBACK_COLORS.length];
+    fallbackIndex++;
+  }
+  return resolvedColors[category];
+}
+
+// ── Format helpers ────────────────────────────────────────────────────────────
+function formatCategory(raw) {
+  return raw.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+function formatMonthDate(yyyyMM) {
+  const [year, month] = yyyyMM.split('-');
+  return new Date(year, parseInt(month) - 1)
+    .toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+}
+function formatPostcode(input) {
+  const cleaned = input.trim().toUpperCase().replace(/\s+/g, '');
+  const m = cleaned.match(/^([A-Z]{1,2}\d{1,2}[A-Z]?)\s*(\d[A-Z]{2})$/);
+  return m ? `${m[1]} ${m[2]}` : input.trim();
+}
+function enhanceQuery(query) {
+  const c = query.trim();
+  if (!c) return null;
+  if (/^[A-Z]{1,2}\d/i.test(c)) return formatPostcode(c);
+  return c;
+}
+
+// ── Geolocation ───────────────────────────────────────────────────────────────
 if (navigator.geolocation) {
-  console.log('[LOCATION] Requesting user location...');
-  
+  console.log('[LOCATION] Requesting geolocation...');
   navigator.geolocation.getCurrentPosition(
-    (position) => {
+    pos => {
       userLocation = {
         lat: position.coords.latitude,
         lng: position.coords.longitude
